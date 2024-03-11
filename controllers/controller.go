@@ -9,6 +9,7 @@ import (
 
 	"github.com/comp13xo/ecommerce/database"
 	"github.com/comp13xo/ecommerce/models"
+	"github.com/comp13xo/ecommerce/tokens"
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
 	"go.mongodb.org/mongo-driver/bson"
@@ -76,7 +77,7 @@ func SignUp() gin.HandlerFunc {
 		user.UpdatedAt, _ = time.Parse(time.RFC3339, time.Now().Format(time.RFC3339))
 		user.ID = primitive.NewObjectID()
 		user.UserId = user.ID.Hex()
-		token, refreshtoken, _ := generate.TokenGenerator(*user.Email, *user.FirstName, *user.LastName, user.UserId)
+		token, refreshtoken, _ := tokens.TokenGenerator(*user.Email, *user.FirstName, *user.LastName, user.UserId)
 		user.Token = &token
 		user.RefreshToken = &refreshtoken
 		user.UserCart = make([]models.ProductUser, 0)
@@ -115,14 +116,30 @@ func Login() gin.HandlerFunc {
 			fmt.Println(msg)
 			return
 		}
-		token, refreshtoken, _ := generate.TokenGenerator(*foundUser.Email, *foundUser.FirstName, *foundUser.LastName, *lfoundUser.UserId)
-		generate.updateAllTokens(token, refreshtoken, foundUser.UserId)
+		token, refreshtoken, _ := tokens.TokenGenerator(*foundUser.Email, *foundUser.FirstName, *foundUser.LastName, foundUser.UserId)
+		tokens.UpdateAllTokens(token, refreshtoken, foundUser.UserId)
 		c.JSON(http.StatusFound, foundUser)
 	}
 }
 
 func ProductViewerAdmin() gin.HandlerFunc {
-
+	return func(c *gin.Context) {
+		var ctx, cancel = context.WithTimeout(context.Background(), 100*time.Second)
+		var products models.Product
+		defer cancel()
+		if err := c.BindJSON(&products); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		products.ProductID = primitive.NewObjectID()
+		_, err := ProductCollection.InsertOne(ctx, products)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "not inserted"})
+			return
+		}
+		defer cancel()
+		c.JSON(http.StatusAccepted, "successfully added product")
+	}
 }
 
 func SearchProduct() gin.HandlerFunc {

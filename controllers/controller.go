@@ -146,7 +146,7 @@ func SearchProduct() gin.HandlerFunc {
 
 		if err := cursor.Err(); err != nil {
 			log.Println(err)
-			c.IndentedJSON(400, "invalid")
+			c.IndentedJSON(400, "invalid request")
 		}
 
 		c.IndentedJSON(200, productlist)
@@ -155,5 +155,41 @@ func SearchProduct() gin.HandlerFunc {
 }
 
 func SearchProductByQuery() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var productlist []models.Product
+		queryParam := c.Query("name")
 
+		if queryParam == "" {
+			log.Println("query is empty")
+			c.Header("content-type", "application/json")
+			c.JSON(http.StatusBadRequest, gin.H{"Error": "Invalid search index"})
+			c.Abort()
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Second)
+		defer cancel()
+		cursor, err := ProductCollection.Find(ctx, bson.M{"product_name": bson.M{"$regex": queryParam}})
+		if err != nil {
+			c.IndentedJSON(http.StatusInternalServerError, "something went wrong,while fetching the data")
+			return
+		}
+
+		err = cursor.All(ctx, &productlist)
+		if err != nil {
+			log.Println(err)
+			c.AbortWithStatus(http.StatusInternalServerError)
+			return
+		}
+
+		defer cursor.Close(ctx)
+
+		if err := cursor.Err(); err != nil {
+			log.Println(err)
+			c.IndentedJSON(400, "invalid request")
+		}
+
+		c.IndentedJSON(200, productlist)
+
+	}
 }
